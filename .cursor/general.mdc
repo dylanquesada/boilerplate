@@ -1,0 +1,64 @@
+# Cursor Rules for Next.js Boilerplate
+
+## General Development Guidelines
+
+1. Always use TypeScript for type safety
+2. Follow React best practices and hooks patterns
+3. Use server components by default in App Router
+4. Implement proper error handling and loading states
+5. Follow the project's folder structure conventions
+
+## Code Style
+
+- Use functional components with hooks
+- Prefer const assertions over let/var
+- Use async/await over .then() chains
+- Implement proper error boundaries
+- Use semantic HTML elements
+- Follow accessibility (a11y) guidelines
+
+## File Organization
+
+- Place components in `/src/components/`
+- Database logic in `/src/db/`
+- API routes in `/src/app/api/`
+- Types in `/src/types/`
+- Utilities in `/src/lib/`
+
+## Database & API
+
+- Use Drizzle ORM for database operations
+- Implement proper validation with Zod schemas
+- Use tRPC or standard API routes with proper error handling
+- Always validate input data
+- Use proper HTTP status codes
+
+## Authentication
+
+- Use NextAuth.js for authentication
+- Implement proper session management
+- Use middleware for protected routes
+- Follow security best practices
+
+## Performance
+
+- Use Next.js Image component for images
+- Implement proper caching strategies
+- Use React.memo() for expensive components
+- Implement proper loading states
+- Use Suspense boundaries appropriately
+
+## Testing
+
+- Write unit tests for utilities and hooks
+- Implement integration tests for API routes
+- Use React Testing Library for component tests
+- Mock external dependencies in tests
+
+## Security
+
+- Validate all user inputs
+- Use environment variables for secrets
+- Implement CSRF protection
+- Use proper CORS settings
+- Follow OWASP security guidelines 

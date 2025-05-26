@@ -1,0 +1,541 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# API Routes Development
+
+## Next.js App Router API Guidelines
+
+### Route Structure
+- API routes in `src/app/api/` directory
+- Use `route.ts` files for endpoints
+- Support HTTP methods: GET, POST, PUT, PATCH, DELETE
+- Use dynamic routes: `[id]/route.ts`
+
+### Basic Route Template
+```typescript
+// src/app/api/example/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { z } from 'zod';
+
+// Validation schemas
+const createSchema = z.object({
+  name: z.string().min(1).max(255),
+  email: z.string().email(),
+  age: z.number().min(18).optional(),
+});
+
+const updateSchema = createSchema.partial();
+
+// GET /api/example
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const page = Number(searchParams.get('page')) || 1;
+    const limit = Number(searchParams.get('limit')) || 10;
+    
+    // Fetch data
+    const data = await fetchData({ page, limit });
+    
+    return NextResponse.json({
+      data,
+      pagination: {
+        page,
+        limit,
+        total: data.length,
+      },
+    });
+  } catch (error) {
+    console.error('GET /api/example error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/example
+export async function POST(request: NextRequest) {
+  try {
+    // Optional: Check authentication
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Parse and validate request body
+    const body = await request.json();
+    const validatedData = createSchema.parse(body);
+    
+    // Create resource
+    const result = await createResource(validatedData);
+    
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { 
+          error: 'Validation failed',
+          details: error.errors,
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.error('POST /api/example error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Dynamic Routes
+```typescript
+// src/app/api/posts/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+interface RouteParams {
+  params: {
+    id: string;
+  };
+}
+
+// GET /api/posts/[id]
+export async function GET(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  try {
+    const { id } = params;
+    
+    // Validate ID
+    const postId = Number(id);
+    if (isNaN(postId)) {
+      return NextResponse.json(
+        { error: 'Invalid post ID' },
+        { status: 400 }
+      );
+    }
+    
+    const post = await getPostById(postId);
+    
+    if (!post) {
+      return NextResponse.json(
+        { error: 'Post not found' },
+        { status: 404 }
+      );
+    }
+    
+    return NextResponse.json(post);
+  } catch (error) {
+    console.error('GET /api/posts/[id] error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT /api/posts/[id]
+export async function PUT(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    const { id } = params;
+    const postId = Number(id);
+    
+    // Check if post exists and user owns it
+    const existingPost = await getPostById(postId);
+    if (!existingPost) {
+      return NextResponse.json(
+        { error: 'Post not found' },
+        { status: 404 }
+      );
+    }
+    
+    if (existingPost.authorId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+    
+    const body = await request.json();
+    const validatedData = updatePostSchema.parse(body);
+    
+    const updatedPost = await updatePost(postId, validatedData);
+    
+    return NextResponse.json(updatedPost);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.errors },
+        { status: 400 }
+      );
+    }
+    
+    console.error('PUT /api/posts/[id] error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/posts/[id]
+export async function DELETE(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    const { id } = params;
+    const postId = Number(id);
+    
+    // Check ownership
+    const post = await getPostById(postId);
+    if (!post || post.authorId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Post not found or unauthorized' },
+        { status: 404 }
+      );
+    }
+    
+    await deletePost(postId);
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('DELETE /api/posts/[id] error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Authentication & Authorization
+
+#### Protected Routes
+```typescript
+// src/lib/auth-middleware.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+
+export async function withAuth(
+  handler: (request: NextRequest, session: any) => Promise<NextResponse>
+) {
+  return async (request: NextRequest) => {
+    const session = await getServerSession(authOptions);
+    
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    return handler(request, session);
+  };
+}
+
+// Usage in route
+export const POST = withAuth(async (request, session) => {
+  // Route logic with authenticated user
+  const userId = session.user.id;
+  // ... rest of the logic
+});
+```
+
+#### Role-Based Access
+```typescript
+// src/lib/rbac.ts
+export enum Role {
+  USER = 'user',
+  ADMIN = 'admin',
+  MODERATOR = 'moderator',
+}
+
+export function withRole(role: Role) {
+  return function (
+    handler: (request: NextRequest, session: any) => Promise<NextResponse>
+  ) {
+    return withAuth(async (request, session) => {
+      if (session.user.role !== role) {
+        return NextResponse.json(
+          { error: 'Insufficient permissions' },
+          { status: 403 }
+        );
+      }
+      
+      return handler(request, session);
+    });
+  };
+}
+```
+
+### Input Validation
+
+#### Zod Schemas
+```typescript
+// src/lib/validation.ts
+import { z } from 'zod';
+
+export const paginationSchema = z.object({
+  page: z.number().min(1).default(1),
+  limit: z.number().min(1).max(100).default(10),
+});
+
+export const postSchema = z.object({
+  title: z.string().min(1).max(255),
+  content: z.string().min(1),
+  published: z.boolean().default(false),
+  tags: z.array(z.string()).optional(),
+});
+
+export const userUpdateSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  bio: z.string().max(500).optional(),
+  website: z.string().url().optional(),
+});
+
+// Complex validation
+export const createPostSchema = postSchema.extend({
+  authorId: z.string().uuid(),
+  categoryId: z.number().optional(),
+});
+```
+
+### Error Handling
+
+#### Error Types
+```typescript
+// src/lib/api-errors.ts
+export class APIError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number,
+    public code?: string
+  ) {
+    super(message);
+    this.name = 'APIError';
+  }
+}
+
+export class ValidationError extends APIError {
+  constructor(message: string, public details?: any) {
+    super(message, 400, 'VALIDATION_ERROR');
+  }
+}
+
+export class UnauthorizedError extends APIError {
+  constructor(message = 'Unauthorized') {
+    super(message, 401, 'UNAUTHORIZED');
+  }
+}
+
+export class ForbiddenError extends APIError {
+  constructor(message = 'Forbidden') {
+    super(message, 403, 'FORBIDDEN');
+  }
+}
+
+export class NotFoundError extends APIError {
+  constructor(message = 'Resource not found') {
+    super(message, 404, 'NOT_FOUND');
+  }
+}
+```
+
+#### Error Handler Middleware
+```typescript
+// src/lib/error-handler.ts
+import { NextResponse } from 'next/server';
+import { APIError } from './api-errors';
+import { z } from 'zod';
+
+export function handleAPIError(error: unknown): NextResponse {
+  console.error('API Error:', error);
+  
+  if (error instanceof APIError) {
+    return NextResponse.json(
+      {
+        error: error.message,
+        code: error.code,
+      },
+      { status: error.statusCode }
+    );
+  }
+  
+  if (error instanceof z.ZodError) {
+    return NextResponse.json(
+      {
+        error: 'Validation failed',
+        details: error.errors,
+      },
+      { status: 400 }
+    );
+  }
+  
+  return NextResponse.json(
+    { error: 'Internal server error' },
+    { status: 500 }
+  );
+}
+
+// Usage in routes
+export async function POST(request: NextRequest) {
+  try {
+    // Route logic
+  } catch (error) {
+    return handleAPIError(error);
+  }
+}
+```
+
+### Rate Limiting
+
+#### Simple Rate Limiting
+```typescript
+// src/lib/rate-limit.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+const rateLimitMap = new Map<string, { count: number; lastReset: number }>();
+
+export function rateLimit(
+  identifier: string,
+  limit: number = 10,
+  windowMs: number = 60000 // 1 minute
+): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(identifier);
+  
+  if (!record || now - record.lastReset > windowMs) {
+    rateLimitMap.set(identifier, { count: 1, lastReset: now });
+    return true;
+  }
+  
+  if (record.count >= limit) {
+    return false;
+  }
+  
+  record.count++;
+  return true;
+}
+
+export function withRateLimit(
+  limit: number = 10,
+  windowMs: number = 60000
+) {
+  return function (
+    handler: (request: NextRequest) => Promise<NextResponse>
+  ) {
+    return async (request: NextRequest) => {
+      const ip = request.headers.get('x-forwarded-for') || 'unknown';
+      
+      if (!rateLimit(ip, limit, windowMs)) {
+        return NextResponse.json(
+          { error: 'Too many requests' },
+          { status: 429 }
+        );
+      }
+      
+      return handler(request);
+    };
+  };
+}
+```
+
+### Testing API Routes
+
+#### Unit Tests
+```typescript
+// __tests__/api/posts.test.ts
+import { POST, GET } from '@/app/api/posts/route';
+import { NextRequest } from 'next/server';
+
+// Mock dependencies
+jest.mock('@/lib/auth');
+jest.mock('@/db');
+
+describe('/api/posts', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+  
+  describe('POST', () => {
+    it('should create a post with valid data', async () => {
+      const request = new NextRequest('http://localhost:3000/api/posts', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Test Post',
+          content: 'Test content',
+        }),
+      });
+      
+      const response = await POST(request);
+      const data = await response.json();
+      
+      expect(response.status).toBe(201);
+      expect(data.title).toBe('Test Post');
+    });
+    
+    it('should return 400 for invalid data', async () => {
+      const request = new NextRequest('http://localhost:3000/api/posts', {
+        method: 'POST',
+        body: JSON.stringify({ title: '' }), // Invalid title
+      });
+      
+      const response = await POST(request);
+      
+      expect(response.status).toBe(400);
+    });
+  });
+});
+```
+
+### Best Practices
+
+#### Performance
+- Use database connection pooling
+- Implement caching for frequently accessed data
+- Use pagination for large datasets
+- Optimize database queries
+
+#### Security
+- Always validate input data
+- Implement proper authentication checks
+- Use HTTPS in production
+- Sanitize output data
+- Implement CORS properly
+
+#### Monitoring
+- Log all API requests and errors
+- Monitor API response times
+- Track error rates
+- Implement health checks

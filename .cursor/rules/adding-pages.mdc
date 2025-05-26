@@ -1,0 +1,83 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Adding New Pages
+
+## Page Creation Guidelines
+
+When creating new pages in the Next.js app:
+
+### File Structure
+- Use the App Router structure: `src/app/[route]/page.tsx`
+- For dynamic routes: `src/app/[param]/page.tsx`
+- For nested layouts: `src/app/[route]/layout.tsx`
+- For loading states: `src/app/[route]/loading.tsx`
+- For error boundaries: `src/app/[route]/error.tsx`
+
+### Page Component Template
+```typescript
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { redirect } from 'next/navigation';
+
+export default async function PageName() {
+  // Optional: Add authentication check
+  const session = await getServerSession(authOptions);
+  
+  // Optional: Redirect if not authenticated
+  if (!session) {
+    redirect('/api/auth/signin');
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-4xl font-bold mb-8">Page Title</h1>
+        {/* Page content */}
+      </div>
+    </div>
+  );
+}
+```
+
+### Metadata and SEO
+Always include proper metadata:
+```typescript
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Page Title',
+  description: 'Page description for SEO',
+};
+```
+
+### Page Types
+- **Public pages**: No authentication required
+- **Protected pages**: Require authentication, redirect to signin
+- **Admin pages**: Require specific roles/permissions
+- **API pages**: Use route handlers in `route.ts` files
+
+### Navigation Updates
+- Update navigation component in `src/components/Navigation.tsx`
+- Add links to relevant parent pages
+- Consider breadcrumb navigation for nested pages
+
+### Styling Guidelines
+- Use Tailwind CSS for consistent styling
+- Follow the container pattern: `container mx-auto px-4 py-8`
+- Use consistent spacing: `mb-8` for sections, `mb-4` for elements
+- Implement responsive design: `grid md:grid-cols-2 lg:grid-cols-3`
+
+### Error Handling
+- Create custom error pages for 404, 500, etc.
+- Use error boundaries for client-side errors
+- Implement proper loading states
+- Add fallback UI for failed requests
+
+### Performance Considerations
+- Use server components by default
+- Add `loading.tsx` for async operations
+- Implement proper caching strategies
+- Use `dynamic` imports for client components when needed
