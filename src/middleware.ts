@@ -1,21 +1,15 @@
-import { withAuth } from 'next-auth/middleware';
+import { auth } from '@/lib/auth';
+import { NextResponse } from 'next/server';
 
-export default withAuth(
-  function middleware(req) {
-    // Add any additional middleware logic here
-  },
-  {
-    callbacks: {
-      authorized: ({ token, req }) => {
-        // Protect dashboard routes
-        if (req.nextUrl.pathname.startsWith('/dashboard')) {
-          return !!token;
-        }
-        return true;
-      },
-    },
+export default auth((req) => {
+  // Protect dashboard routes
+  if (req.nextUrl.pathname.startsWith('/dashboard')) {
+    if (!req.auth) {
+      return NextResponse.redirect(new URL('/api/auth/signin', req.url));
+    }
   }
-);
+  return NextResponse.next();
+});
 
 export const config = {
   matcher: ['/dashboard/:path*']
